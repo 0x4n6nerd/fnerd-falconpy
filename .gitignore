@@ -265,3 +265,14 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+# Internal development documents (not for public GitHub)
+CLAUDE.md
+CLAUDE_ARCHIVE.md
+*_STATUS.md
+*_SUMMARY.md
+*_TRACKING.md
+FILES_TO_KEEP.md
+GIT_LFS_SETUP.md
+docs/*_PLAN.md
+docs/*_CHECKLIST.md
+docs/WEB_DASHBOARD_ARCHITECTURE.md
