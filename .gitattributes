@@ -1,0 +1,48 @@
+# Git LFS tracking for large binary files
+
+# Compressed archives
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.7z filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
+*.tar.bz2 filter=lfs diff=lfs merge=lfs -text
+*.rar filter=lfs diff=lfs merge=lfs -text
+
+# Windows executables and DLLs
+*.exe filter=lfs diff=lfs merge=lfs -text
+*.dll filter=lfs diff=lfs merge=lfs -text
+*.msi filter=lfs diff=lfs merge=lfs -text
+
+# macOS/Linux binaries (no extension, handled by path)
+forensics_nerdstriker/resources/uac/uac-main/bin/**/* filter=lfs diff=lfs merge=lfs -text
+build/lib/falcon_client/resources/uac/uac-main/bin/**/* filter=lfs diff=lfs merge=lfs -text
+
+# Large JSON files (over 1MB)
+discovery_output/*.json filter=lfs diff=lfs merge=lfs -text
+
+# Binary forensic tools
+forensics_nerdstriker/resources/kape/Modules/bin/**/*.exe filter=lfs diff=lfs merge=lfs -text
+build/lib/falcon_client/resources/kape/Modules/bin/**/*.exe filter=lfs diff=lfs merge=lfs -text
+
+# KAPE specific binaries
+forensics_nerdstriker/resources/kape/kape.exe filter=lfs diff=lfs merge=lfs -text
+build/lib/falcon_client/resources/kape/kape.exe filter=lfs diff=lfs merge=lfs -text
+
+# UAC specific binaries
+forensics_nerdstriker/resources/uac/uac-main/bin/linux/avml filter=lfs diff=lfs merge=lfs -text
+build/lib/falcon_client/resources/uac/uac-main/bin/linux/avml filter=lfs diff=lfs merge=lfs -text
+
+# Additional binary formats that might be added
+*.iso filter=lfs diff=lfs merge=lfs -text
+*.vhdx filter=lfs diff=lfs merge=lfs -text
+*.vmdk filter=lfs diff=lfs merge=lfs -text
+*.dmg filter=lfs diff=lfs merge=lfs -text
+
+# Large documentation or data files
+*.pdf filter=lfs diff=lfs merge=lfs -text
+*.sqlite filter=lfs diff=lfs merge=lfs -text
+*.db filter=lfs diff=lfs merge=lfs -text
+
+# Memory dumps and forensic artifacts
+*.dmp filter=lfs diff=lfs merge=lfs -text
+*.mem filter=lfs diff=lfs merge=lfs -text
+*.raw filter=lfs diff=lfs merge=lfs -text

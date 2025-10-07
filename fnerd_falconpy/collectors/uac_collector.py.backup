@@ -1,0 +1,996 @@
+"""
+Unix-like Artifacts Collector (UAC) for forensic collection on Unix/Linux/macOS systems.
+"""
+
+import os
+import re
+import shutil
+import time
+import tarfile
+import tempfile
+from typing import List, Optional, Dict
+from pathlib import Path
+from datetime import datetime
+from falcon_client.core.base import (
+    HostInfo, RTRSession, Platform,
+    ILogger, DefaultLogger, IConfigProvider
+)
+from falcon_client.managers.managers import FileManager, SessionManager
+from falcon_client.utils.cloud_storage import CloudStorageManager
+
+
+class UACCollector:
+    """Handles UAC (Unix-like Artifacts Collector) forensic collection operations"""
+    
+    def __init__(self, file_manager: FileManager, session_manager: SessionManager,
+                 cloud_storage: CloudStorageManager, config: IConfigProvider,
+                 logger: Optional[ILogger] = None):
+        """
+        Initialize UAC collector
+        
+        Args:
+            file_manager: File manager instance
+            session_manager: Session manager instance
+            cloud_storage: Cloud storage manager instance
+            config: Configuration provider
+            logger: Logger instance (uses DefaultLogger if not provided)
+        """
+        self.file_manager = file_manager
+        self.session_manager = session_manager
+        self.cloud_storage = cloud_storage
+        self.config = config
+        self.logger = logger or DefaultLogger("UACCollector")
+        
+    def run_uac_collection(self, host_info: HostInfo, profile: str = "ir_triage") -> Optional[str]:
+        """
+        Run UAC forensic collection on Unix/Linux/macOS systems
+        
+        Args:
+            host_info: Target host information
+            profile: UAC profile to use (default: ir_triage)
+            
+        Returns:
+            Collection file name or None
+        """
+        session = None
+        try:
+            # Validate platform
+            platform = Platform(host_info.platform.lower())
+            if platform == Platform.WINDOWS:
+                self.logger.error("UAC is not supported on Windows. Use KAPE instead.")
+                return None
+                
+            self.logger.info(f"Starting UAC collection on {host_info.hostname} with profile: {profile}")
+            print(f"[*] Starting UAC collection on {host_info.hostname} with profile: {profile}")
+            
+            # Check for UAC in cloud files first
+            self.logger.info("Checking cloud files for UAC package")
+            
+            # Upload UAC to cloud
+            self.logger.info("Uploading UAC to cloud")
+            cloud_files = self.file_manager.list_cloud_files(host_info.cid)
+            
+            # Use fixed filename but force fresh upload
+            uac_file = 'uac.zip'
+            
+            # Delete existing UAC package to ensure fresh upload
+            if uac_file in cloud_files:
+                self.logger.info(f"Deleting existing {uac_file} from cloud")
+                self.file_manager.delete_from_cloud(host_info.cid, uac_file)
+                # Wait for deletion to complete
+                time.sleep(5)
+                
+            # Use pre-existing UAC package from resources
+            # NEVER create temporary files
+            package_root = Path(__file__).parent.parent
+            uac_package = package_root / "resources" / "uac" / "uac.zip"
+            
+            if not uac_package.exists():
+                self.logger.error("UAC package not found in resources. Please ensure uac.zip exists at falcon_client/resources/uac/uac.zip")
+                print("[!] UAC package not found in resources")
+                return None
+                
+            self.logger.info(f"Using UAC package from: {uac_package}")
+            print(f"[*] Using UAC package from resources")
+            
+            # Log package details for debugging
+            self.logger.info(f"UAC package path: {uac_package}")
+            self.logger.info(f"Package exists: {uac_package.exists()}")
+            self.logger.info(f"Package size: {uac_package.stat().st_size if uac_package.exists() else 'N/A'}")
+            
+            # Verify package contains custom profiles
+            import zipfile
+            with zipfile.ZipFile(uac_package, 'r') as zf:
+                profiles_in_package = [n for n in zf.namelist() if 'profiles/' in n and n.endswith('.yaml')]
+                custom_profiles = [p for p in profiles_in_package if any(custom in p for custom in ['quick_triage_optimized', 'ir_triage_no_hash', 'network_compromise', 'malware_hunt_fast'])]
+                self.logger.info(f"Package contains {len(profiles_in_package)} profiles, including {len(custom_profiles)} custom profiles")
+                print(f"[*] UAC package contains {len(profiles_in_package)} profiles ({len(custom_profiles)} custom)")
+            
+            if not self.file_manager.upload_to_cloud(
+                host_info.cid, 
+                str(uac_package), 
+                'UAC Unix Artifacts Collector Upload', 
+                'SIRT UAC Tool'
+            ):
+                self.logger.error("Failed to upload uac.zip")
+                return None
+                
+            # Wait longer for cloud sync to ensure file is available
+            self.logger.info("Waiting for cloud sync...")
+            time.sleep(30)  # Increased from 15 to 30 seconds
+            
+            # Refresh cloud files list after waiting
+            cloud_files = self.file_manager.list_cloud_files(host_info.cid)
+            
+            # Verify file is in cloud
+            cloud_files = self.file_manager.list_cloud_files(host_info.cid)
+            self.logger.info(f"Cloud files after upload: {cloud_files}")
+            
+            if uac_file not in cloud_files:
+                self.logger.error(f"{uac_file} not found in cloud files after upload")
+                self.logger.error(f"Available files: {cloud_files}")
+                return None
+                
+            self.logger.info(f"Uploaded fresh UAC package: {uac_file}")
+            print(f"[*] Uploaded fresh UAC package: {uac_file}")
+                
+            # Start RTR session
+            session = self.session_manager.start_session(host_info.aid)
+            if not session:
+                self.logger.error("Failed to start RTR session")
+                return None
+                
+            # Deploy and execute UAC
+            self.logger.info("Deploying UAC on target host")
+            print(f"[*] Deploying UAC on target host using {uac_file}")
+            
+            # Use /Users/SIE-SIRT like KAPE deployment
+            deploy_path = "/Users/SIE-SIRT"
+            evidence_path = f"{deploy_path}/evidence"
+                
+            # CRITICAL: Clean up any existing UAC installation to ensure fresh deployment
+            self.logger.info(f"Cleaning up any existing UAC installation...")
+            cleanup_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```rm -rf {deploy_path} 2>/dev/null || true```", is_admin=True
+            )
+            
+            # Create working directory
+            self.logger.info(f"Creating deployment directory: {deploy_path}")
+            mkdir_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```mkdir -p {deploy_path}```", is_admin=True
+            )
+            
+            if not mkdir_result or mkdir_result.return_code != 0:
+                self.logger.error(f"Failed to create deployment directory: {deploy_path}")
+                if mkdir_result and mkdir_result.stderr:
+                    self.logger.error(f"mkdir stderr: {mkdir_result.stderr}")
+                if mkdir_result and mkdir_result.stdout:
+                    self.logger.error(f"mkdir stdout: {mkdir_result.stdout}")
+                return None
+            
+            # Verify directory was created successfully
+            verify_dir = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```test -d {deploy_path} && echo 'EXISTS' || echo 'NOT_FOUND'```", is_admin=True
+            )
+            
+            if not verify_dir or "EXISTS" not in verify_dir.stdout:
+                self.logger.error(f"Deployment directory does not exist after creation: {deploy_path}")
+                return None
+                
+            self.logger.info(f"Deployment directory created successfully: {deploy_path}")
+            
+            # CRITICAL: Change to deployment directory FIRST before put
+            # NEVER attempt to write to root directory
+            self.logger.info(f"Changing to deployment directory: {deploy_path}")
+            cd_result = self.session_manager.execute_command(
+                session, "cd", f"cd {deploy_path}", is_admin=True
+            )
+            
+            if not cd_result or cd_result.return_code != 0:
+                self.logger.error(f"Failed to change to deployment directory: {deploy_path}")
+                if cd_result and cd_result.stderr:
+                    self.logger.error(f"cd command stderr: {cd_result.stderr}")
+                if cd_result and cd_result.stdout:
+                    self.logger.error(f"cd command stdout: {cd_result.stdout}")
+                return None
+            
+            # Verify current working directory after cd
+            pwd_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```pwd```", is_admin=True
+            )
+            
+            if pwd_result and pwd_result.stdout:
+                current_dir = pwd_result.stdout.strip()
+                self.logger.info(f"Current working directory: {current_dir}")
+                if current_dir != deploy_path:
+                    self.logger.warning(f"Working directory is {current_dir}, expected {deploy_path}")
+            
+            # Put UAC package - now it will go to /Users/SIE-SIRT
+            self.logger.info(f"Transferring {uac_file} to {deploy_path}")
+            put_result = self.session_manager.execute_command(
+                session, "put", f"put {uac_file}", is_admin=True
+            )
+            
+            if not put_result or put_result.return_code != 0:
+                self.logger.error(f"Failed to transfer {uac_file} to target host")
+                if put_result:
+                    self.logger.error(f"PUT return code: {put_result.return_code}")
+                    if put_result.stderr:
+                        self.logger.error(f"PUT stderr: {put_result.stderr}")
+                    if put_result.stdout:
+                        self.logger.error(f"PUT stdout: {put_result.stdout}")
+                else:
+                    self.logger.error("PUT command returned None result")
+                
+                # Check if file exists in cloud files (common cause of PUT failure)
+                cloud_files = self.file_manager.list_cloud_files(host_info.cid)
+                if uac_file not in cloud_files:
+                    self.logger.error(f"{uac_file} not found in cloud files. Available files: {cloud_files}")
+                    return None
+                else:
+                    self.logger.info(f"{uac_file} exists in cloud files, investigating other causes...")
+                    
+                # If PUT fails, check if file already exists on host
+                check_existing = self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```test -f {deploy_path}/{uac_file} && echo 'EXISTS' || echo 'NOT_FOUND'```", is_admin=True
+                )
+                if check_existing and "EXISTS" in check_existing.stdout:
+                    self.logger.warning(f"{uac_file} already exists on host, continuing with existing file")
+                    print(f"[!] {uac_file} already exists on host, continuing with existing file")
+                else:
+                    return None
+            
+            # Extract UAC - file is now already in the right location
+            self.logger.info("Extracting UAC package")
+            if uac_file.endswith('.zip'):
+                # Use -o to overwrite existing files and capture all output
+                extract_cmd = f"runscript -Raw=```cd {deploy_path} && unzip -o {uac_file} 2>&1```"
+            else:
+                extract_cmd = f"runscript -Raw=```cd {deploy_path} && tar -xzf {uac_file} 2>&1```"
+            
+            extract_result = self.session_manager.execute_command(
+                session, "runscript", extract_cmd, is_admin=True
+            )
+            
+            if not extract_result or extract_result.return_code != 0:
+                self.logger.error("Failed to extract UAC package")
+                if extract_result:
+                    if extract_result.stderr:
+                        self.logger.error(f"Extract error: {extract_result.stderr}")
+                    if extract_result.stdout:
+                        self.logger.error(f"Extract output: {extract_result.stdout}")
+                    self.logger.error(f"Extract return code: {extract_result.return_code}")
+                print("[!] Failed to extract UAC package - check logs for details")
+                return None
+                
+            # Log extraction output for debugging
+            if extract_result and extract_result.stdout:
+                self.logger.info(f"Extract output: {extract_result.stdout}")
+                # Count how many profiles were extracted
+                profile_count = extract_result.stdout.count('/profiles/') + extract_result.stdout.count('profiles/')
+                if profile_count > 0:
+                    self.logger.info(f"Extracted approximately {profile_count} profile files")
+                    # Show which custom profiles were extracted
+                    for custom_profile in ['quick_triage_optimized', 'ir_triage_no_hash', 'network_compromise', 'malware_hunt_fast']:
+                        if custom_profile in extract_result.stdout:
+                            self.logger.info(f"✓ Custom profile extracted: {custom_profile}.yaml")
+                            print(f"[*] ✓ Custom profile extracted: {custom_profile}.yaml")
+                        else:
+                            self.logger.warning(f"✗ Custom profile NOT found in extraction: {custom_profile}.yaml")
+                            print(f"[!] ✗ Custom profile NOT found in extraction: {custom_profile}.yaml")
+            
+            # List what was extracted
+            self.logger.info("Checking extracted files...")
+            ls_extracted = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```ls -la {deploy_path}```", is_admin=True
+            )
+            if ls_extracted and ls_extracted.stdout:
+                self.logger.info(f"Extracted files:\n{ls_extracted.stdout}")
+                
+            # Find UAC directory - it extracts as 'uac-main' not 'uac-X.X.X'
+            # Use find command to avoid shell globbing issues
+            find_cmd = f"runscript -Raw=```find {deploy_path} -maxdepth 1 -type d -name 'uac*' | head -1```"
+            ls_result = self.session_manager.execute_command(
+                session, "runscript", find_cmd, is_admin=True
+            )
+            
+            if not ls_result or not ls_result.stdout.strip():
+                # Fallback: list all directories to debug
+                debug_cmd = f"runscript -Raw=```ls -la {deploy_path}```"
+                debug_result = self.session_manager.execute_command(
+                    session, "runscript", debug_cmd, is_admin=True
+                )
+                self.logger.error("Could not find UAC directory after extraction")
+                if debug_result:
+                    self.logger.error(f"Directory contents: {debug_result.stdout}")
+                return None
+                
+            # Extract directory name from full path
+            uac_path = ls_result.stdout.strip()
+            uac_dir = os.path.basename(uac_path)
+            
+            self.logger.info(f"Found UAC directory: {uac_dir} at {uac_path}")
+            
+            # Make UAC executable
+            self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```chmod +x {uac_path}/uac```", is_admin=True
+            )
+            
+            # Check UAC version
+            version_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```cd {uac_path} && ./uac --version 2>&1```", is_admin=True
+            )
+            if version_result and version_result.stdout:
+                self.logger.info(f"UAC version: {version_result.stdout.strip()}")
+                print(f"[*] UAC version: {version_result.stdout.strip()}")
+                
+            # Test if UAC can find the requested profile
+            test_profile_cmd = f"runscript -Raw=```cd {uac_path} && ./uac -p {profile} --validate-only 2>&1 || echo 'Profile validation result: '$?```"
+            test_result = self.session_manager.execute_command(
+                session, "runscript", test_profile_cmd, is_admin=True
+            )
+            if test_result:
+                self.logger.info(f"Profile validation test: {test_result.stdout}")
+                if "profile not found" in test_result.stdout:
+                    self.logger.error(f"UAC cannot find profile '{profile}'")
+                    print(f"[!] UAC cannot find profile '{profile}'")
+                    # Try without quotes just in case
+                    print(f"[*] Testing profile validation with different approaches...")
+                    test_cmd2 = f"runscript -Raw=```cd {uac_path} && ./uac --profile list | grep -i {profile}```"
+                    test_result2 = self.session_manager.execute_command(
+                        session, "runscript", test_cmd2, is_admin=True
+                    )
+                    if test_result2:
+                        print(f"[*] Profile grep result: {test_result2.stdout}")
+            
+            # List profiles directory to debug
+            self.logger.info("Listing UAC profiles directory...")
+            profiles_list_cmd = f"runscript -Raw=```ls -la {uac_path}/profiles/```"
+            profiles_result = self.session_manager.execute_command(
+                session, "runscript", profiles_list_cmd, is_admin=True
+            )
+            if profiles_result and profiles_result.stdout:
+                self.logger.info(f"UAC profiles directory contents:\n{profiles_result.stdout}")
+                print(f"[*] Available UAC profiles:")
+                # Parse and display profile names
+                for line in profiles_result.stdout.split('\n'):
+                    if '.yaml' in line and not line.startswith('total'):
+                        profile_name = line.split()[-1].replace('.yaml', '')
+                        print(f"    - {profile_name}")
+            else:
+                self.logger.error("Failed to list profiles directory")
+                print("[!] Failed to list UAC profiles directory")
+            
+            # Create evidence directory
+            self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```mkdir -p {evidence_path}```", is_admin=True
+            )
+            
+            # Execute UAC collection
+            self.logger.info(f"Executing UAC collection with profile: {profile}")
+            print(f"[*] Executing UAC collection with profile: {profile}")
+            print(f"[*] Collection will run in background. Progress updates every 30 seconds...")
+            
+            # Build UAC command to run in background to avoid timeout
+            # Use shell backgrounding instead of nohup (which fails in RTR environment due to TTY limitations)
+            # UAC must be executed from within its own directory to find required files
+            uac_cmd = f"(cd {uac_path} && ./uac -p {profile} --output-format tar {evidence_path} < /dev/null > {deploy_path}/uac_output.log 2>&1; echo $? > {evidence_path}/uac_exit_code) & echo $! > {deploy_path}/uac.pid && echo 'UAC started in background'"
+            
+            # Log the exact command for debugging
+            self.logger.info(f"UAC command to execute: {uac_cmd}")
+                
+            # Execute UAC in background (spawns process and returns immediately)
+            uac_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```{uac_cmd}```", is_admin=True
+            )
+            
+            # Give it a moment to start
+            time.sleep(3)
+            
+            # Check if UAC process started by verifying PID file and process existence
+            pid_check_cmd = f"runscript -Raw=```test -f {deploy_path}/uac.pid && cat {deploy_path}/uac.pid```"
+            pid_result = self.session_manager.execute_command(
+                session, "runscript", pid_check_cmd, is_admin=True
+            )
+            
+            if pid_result and pid_result.stdout.strip().isdigit():
+                pid = pid_result.stdout.strip()
+                # Verify the process is actually running
+                proc_check_cmd = f"runscript -Raw=```ps -p {pid} | grep -v PID | wc -l```"
+                proc_result = self.session_manager.execute_command(
+                    session, "runscript", proc_check_cmd, is_admin=True
+                )
+                
+                if proc_result and proc_result.stdout.strip() == "1":
+                    self.logger.info(f"UAC process started successfully in background (PID: {pid})")
+                    print(f"[+] UAC process started successfully in background (PID: {pid})")
+                else:
+                    # This is expected - the PID is for the subshell that launches UAC and exits
+                    self.logger.info(f"UAC launcher process (PID: {pid}) has completed - UAC is running independently")
+            else:
+                self.logger.info("UAC started in background mode")
+            
+            if not uac_result:
+                self.logger.error("UAC execution failed")
+                return None
+                
+            # Monitor UAC execution
+            collection_file = self.monitor_uac_execution(session, evidence_path, host_info.hostname, deploy_path, profile=profile)
+            
+            if not collection_file:
+                self.logger.error("UAC collection monitoring failed")
+                return None
+                
+            self.logger.info(f"UAC collection completed: {collection_file}")
+            print(f"[+] UAC collection completed: {collection_file}")
+            
+            # Skip cleanup of UAC files - they're temporary and don't affect future runs
+            # The important evidence files are preserved
+            
+            print(f"[+] UAC collection completed successfully for {host_info.hostname}")
+            return collection_file
+            
+        except Exception as e:
+            self.logger.error(f"Error in run_uac_collection: {e}", exc_info=True)
+            return None
+        finally:
+            # Ensure RTR session is closed
+            if session:
+                try:
+                    self.session_manager.end_session(session)
+                except Exception as e:
+                    self.logger.warning(f"Failed to close RTR session: {e}")
+                    
+    # REMOVED prepare_uac_package method - NEVER create files dynamically
+    # UAC package must be pre-built using scripts/build_uac_package.py
+    # and stored at resources/uac/uac.zip
+                
+    def monitor_uac_execution(self, session: RTRSession, evidence_path: str, 
+                             hostname: str, deploy_path: str, timeout: Optional[int] = None,
+                             profile: str = "ir_triage") -> Optional[str]:
+        """
+        Monitor UAC execution and wait for completion
+        
+        Args:
+            session: Active RTR session
+            evidence_path: Path where UAC stores evidence
+            hostname: Hostname for matching output files
+            deploy_path: Path where UAC is deployed (for status files)
+            timeout: Maximum wait time in seconds (uses profile-specific or default from config)
+            profile: UAC profile being used (for timeout selection)
+            
+        Returns:
+            Collection file name or None
+        """
+        try:
+            # Get timeout from configuration
+            if timeout is None:
+                profile_timeouts = self.config.get_uac_setting("profile_timeouts") or {}
+                timeout = profile_timeouts.get(profile, self.config.get_uac_setting("timeout") or 10800)
+            
+            interval = self.config.get_uac_setting("monitoring_interval") or 30
+            start_time = time.time()
+            last_progress_time = start_time
+            last_file_count = 0
+            last_pulse_time = start_time  # Track when we last pulsed the session
+            
+            self.logger.info(f"Monitoring UAC execution for profile '{profile}' (timeout: {timeout/60:.0f} minutes)")
+            print(f"[*] Monitoring UAC execution for profile '{profile}' (timeout: {timeout/60:.0f} minutes)")
+            
+            while True:
+                elapsed_seconds = time.time() - start_time
+                
+                # CRITICAL: Pulse the session every 60 seconds to prevent timeout
+                if time.time() - last_pulse_time >= 60:
+                    try:
+                        self.session_manager.pulse_session(session)
+                        self.logger.debug("Pulsed RTR session")
+                        last_pulse_time = time.time()
+                    except Exception as e:
+                        self.logger.error(f"Failed to pulse session: {e}")
+                        return None
+                
+                # Try to read UAC output log for real progress
+                # First check if log file exists and has content
+                log_check = self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```test -f {deploy_path}/uac_output.log && wc -l {deploy_path}/uac_output.log | awk '{{print $1}}'```", is_admin=True
+                )
+                
+                # Debug: Check what's in the UAC output log if it exists
+                if int(elapsed_seconds) % 300 == 0:  # Every 5 minutes, show debug info
+                    debug_log = self.session_manager.execute_command(
+                        session, "runscript", f"runscript -Raw=```test -f {deploy_path}/uac_output.log && tail -n 10 {deploy_path}/uac_output.log || echo 'Log file not found'```", is_admin=True
+                    )
+                    if debug_log:
+                        self.logger.info(f"UAC output log (last 10 lines): {debug_log.stdout}")
+                
+                if log_check and log_check.stdout.strip().isdigit() and int(log_check.stdout.strip()) > 0:
+                    # Log exists with content, try to get progress
+                    log_result = self.session_manager.execute_command(
+                        session, "runscript", f"runscript -Raw=```tail -n 50 {deploy_path}/uac_output.log 2>/dev/null | grep -E '\\[[0-9]+/[0-9]+\\]' | tail -n 1```", is_admin=True
+                    )
+                else:
+                    log_result = None
+                
+                if log_result and log_result.stdout.strip():
+                    # Extract progress from UAC output like: [001/105] 2025-05-28 12:47:03 -0400 artifact_name
+                    progress_line = log_result.stdout.strip()
+                    if "[" in progress_line and "]" in progress_line:
+                        try:
+                            progress_part = progress_line.split("]")[0].split("[")[1]
+                            if "/" in progress_part:
+                                current, total = progress_part.split("/")
+                                artifact_name = progress_line.split("] ")[-1] if "] " in progress_line else ""
+                                percentage = (int(current) / int(total)) * 100
+                                print(f"\r[*] UAC progress: [{current}/{total}] {percentage:.1f}% - {artifact_name}", end="", flush=True)
+                        except:
+                            pass
+                
+                # Check for timeout, but be intelligent about it
+                if elapsed_seconds > timeout:
+                    # Before timing out, check if UAC process is still running
+                    pid_check = self.session_manager.execute_command(
+                        session, "runscript", f"runscript -Raw=```test -f {deploy_path}/uac.pid && cat {deploy_path}/uac.pid```", is_admin=True
+                    )
+                    
+                    if pid_check and pid_check.stdout.strip().isdigit():
+                        pid = pid_check.stdout.strip()
+                        proc_check = self.session_manager.execute_command(
+                            session, "runscript", f"runscript -Raw=```ps -p {pid} | grep -v PID | wc -l```", is_admin=True
+                        )
+                        
+                        if proc_check and proc_check.stdout.strip() == "1":
+                            self.logger.warning(f"UAC exceeded timeout ({timeout/60:.0f} min) but process still running (PID: {pid}). Extending timeout...")
+                            print(f"[!] UAC exceeded timeout ({timeout/60:.0f} min) but process still running (PID: {pid}). Extending timeout...")
+                            timeout += 1800  # Extend by 30 minutes
+                            continue
+                    
+                    self.logger.error(f"UAC execution exceeded maximum wait time of {timeout/60:.0f} minutes and process not running")
+                    return None
+                    
+                # Check for UAC output files first (primary completion indicator)
+                ls_result = self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```ls -la {evidence_path}```", is_admin=True
+                )
+                
+                if not ls_result:
+                    self.logger.error("Failed to list evidence directory")
+                    return None
+                    
+                # UAC creates files with pattern: uac-hostname-os-YYYYMMDDHHMMSS.tar.gz (no T separator)
+                # Look for completed archive (timestamp format: YYYYMMDDHHMMSS without T separator)
+                pattern = rf"(uac-{hostname}-\w+-\d{{14}}\.tar\.gz)"
+                match = re.search(pattern, ls_result.stdout)
+                
+                if match:
+                    collection_file = match.group(1)
+                    self.logger.info(f"UAC collection file found: {collection_file}")
+                    print(f"\n[+] UAC collection complete: {collection_file}")
+                    
+                    # Verify file is complete by checking it's not being written
+                    time.sleep(5)
+                    ls_result2 = self.session_manager.execute_command(
+                        session, "runscript", f"runscript -Raw=```ls -la {evidence_path}/{collection_file}```", is_admin=True
+                    )
+                    
+                    if ls_result2 and collection_file in ls_result2.stdout:
+                        # Extract just the filename without extension for consistency with KAPE
+                        base_name = collection_file.replace('.tar.gz', '')
+                        self.logger.info("UAC archive verified and ready")
+                        print("[+] UAC archive verified and ready")
+                        return base_name
+                
+                # Archive not found yet, check if UAC process has finished
+                # FIXED: UAC writes exit code to evidence directory, not deploy directory
+                exit_code_check = self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```test -f {evidence_path}/uac_exit_code && cat {evidence_path}/uac_exit_code```", is_admin=True
+                )
+                
+                # If UAC finished (exit code exists), but no archive yet, it might be creating the archive
+                if exit_code_check and exit_code_check.stdout.strip().isdigit():
+                    exit_code = int(exit_code_check.stdout.strip())
+                    self.logger.info(f"UAC process completed with exit code: {exit_code}")
+                    
+                    if exit_code == 0:
+                        # UAC finished successfully, now waiting for archive creation
+                        print(f"\n[*] UAC process finished, waiting for archive creation...")
+                        # Give it extra time to create the archive
+                        archive_wait_start = time.time()
+                        archive_timeout = 300  # 5 minutes for archiving
+                        
+                        while time.time() - archive_wait_start < archive_timeout:
+                            ls_result = self.session_manager.execute_command(
+                                session, "runscript", f"runscript -Raw=```ls -la {evidence_path}```", is_admin=True
+                            )
+                            
+                            if ls_result:
+                                # UAC creates files with pattern: uac-hostname-os-YYYYMMDDHHMMSS.tar.gz (no T separator)
+                                pattern = rf"(uac-{hostname}-\w+-\d{{14}}\.tar\.gz)"
+                                match = re.search(pattern, ls_result.stdout)
+                                if match:
+                                    collection_file = match.group(1)
+                                    base_name = collection_file.replace('.tar.gz', '')
+                                    self.logger.info(f"Archive created successfully: {collection_file}")
+                                    print(f"\n[+] Archive created: {collection_file}")
+                                    return base_name
+                            
+                            print(f"\r[*] Waiting for archive creation... {int(time.time() - archive_wait_start)}s", end="", flush=True)
+                            time.sleep(10)
+                        
+                        self.logger.error("Archive creation timed out after 5 minutes")
+                        print(f"\n[!] Archive creation timed out")
+                        return None
+                    else:
+                        self.logger.error(f"UAC completed with error exit code: {exit_code}")
+                        print(f"\n[!] UAC completed with error (exit code: {exit_code})")
+                        return None
+                    
+                        
+                # Still running - log progress and check if we can see intermediate files
+                minutes_passed = elapsed_seconds / 60
+                
+                # Look for UAC working directory for actual progress
+                # UAC creates a temporary directory like uac-data.tmp
+                uac_data_result = self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```find {evidence_path} -type f -name '*.yaml' 2>/dev/null | wc -l```", is_admin=True
+                )
+                
+                if uac_data_result and uac_data_result.stdout.strip().isdigit():
+                    file_count = int(uac_data_result.stdout.strip())
+                else:
+                    # Fallback to counting items in evidence directory
+                    if ls_result and ls_result.stdout:
+                        file_lines = [line for line in ls_result.stdout.split('\n') if line.strip() and not line.startswith('total') and not line.endswith('.') and not line.endswith('..')]  
+                        file_count = len(file_lines)
+                    else:
+                        file_count = 0
+                    
+                # Update progress tracking if file count increased
+                if file_count > last_file_count:
+                    last_file_count = file_count
+                    last_progress_time = time.time()
+                
+                # Show progress
+                if file_count > 0:
+                    self.logger.info(f"UAC still running... {minutes_passed:.1f} minutes elapsed ({file_count} artifacts collected so far)")
+                    # Only print if we didn't already show real progress
+                    if not (log_result and log_result.stdout.strip() and "[" in log_result.stdout.strip()):
+                        print(f"[*] UAC still running... {minutes_passed:.1f} minutes elapsed ({file_count} artifacts collected)")
+                else:
+                    self.logger.info(f"UAC still running... {minutes_passed:.1f} minutes elapsed")
+                    if not (log_result and log_result.stdout.strip() and "[" in log_result.stdout.strip()):
+                        print(f"[*] UAC still running... {minutes_passed:.1f} minutes elapsed (initializing...)")
+                
+                # Wait before next check
+                time.sleep(interval)
+                
+        except Exception as e:
+            self.logger.error(f"Error monitoring UAC execution: {e}", exc_info=True)
+            return None
+            
+    def upload_uac_results(self, host_info: HostInfo, collection_file: str, 
+                          evidence_path: str = "/Users/SIE-SIRT/evidence", 
+                          max_retries: int = 2) -> bool:
+        """
+        Upload UAC collection results to cloud storage
+        
+        Args:
+            host_info: Target host information
+            collection_file: Name of the collection file (without extension)
+            evidence_path: Path where evidence is stored
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                self.logger.info(f"Upload attempt {attempt + 1}/{max_retries + 1}")
+                print(f"[*] Upload attempt {attempt + 1}/{max_retries + 1}")
+                time.sleep(30)  # Wait 30 seconds between retries
+                
+                session = None
+                try:
+                    # Start RTR session
+                    session = self.session_manager.start_session(host_info.aid)
+                    if not session:
+                        self.logger.error("Failed to start RTR session")
+                        continue
+                    
+                    # The actual file has .tar.gz extension
+                    actual_file = f"{collection_file}.tar.gz"
+                    full_path = f"{evidence_path}/{actual_file}"
+            
+            # Get file size for progress tracking
+            # Try macOS stat format first, then Linux format
+            stat_result = self.session_manager.execute_command(
+                session, "runscript", f"runscript -Raw=```stat -f '%z' {full_path} 2>/dev/null || stat -c '%s' {full_path}```", 
+                is_admin=True
+            )
+            
+            if not stat_result or not stat_result.stdout.strip().isdigit():
+                self.logger.error(f"Failed to get file size for {full_path}")
+                return False
+                
+            file_size = int(stat_result.stdout.strip())
+            self.logger.info(f"Collection file size: {file_size} bytes")
+            print(f"[*] Collection file size: {file_size / (1024 * 1024):.1f} MB")
+            
+            # Generate S3 upload URL (match KAPE approach)
+            bucket_name = "sirt-cs-artifacts-upload"
+            proxy_host = "sirt-infra-ec2-s3proxy.sirt.sonynei.net"
+            
+            # Use simple filename like KAPE (no subdirectory path)
+            s3_filename = f"{collection_file}.tar.gz"
+            
+            url, key = self.cloud_storage.generate_upload_url(
+                bucket_name,
+                filename=s3_filename
+            )
+            
+            if not url:
+                self.logger.error("Failed to generate upload URL")
+                return False
+                
+            # Replace S3 URL with proxy URL (match KAPE)
+            proxied_url = url.replace(f"{bucket_name}.s3.amazonaws.com", proxy_host)
+            
+            self.logger.info(f"Generated S3 upload URL for key: {s3_filename}")
+            print(f"[*] Generated S3 upload URL for key: {s3_filename}")
+            
+            # Calculate estimated upload time based on file size (very conservative estimate)
+            # Use realistic upload rate: 500KB/s for large files with generous safety margin
+            UPLOAD_RATE = self.config.get_file_setting("upload_rate") or 500000  # 500KB/s conservative rate
+            base_upload_time = file_size / UPLOAD_RATE
+            # Add 100% safety margin + 120 seconds base buffer (more generous)
+            estimated_upload_time = int(base_upload_time * 2.0) + 120
+            self.logger.info(f"Estimated upload time: {estimated_upload_time / 60:.1f} minutes for {file_size / (1024 * 1024):.1f} MB")
+            print(f"[*] Estimated upload time: {estimated_upload_time / 60:.1f} minutes for {file_size / (1024 * 1024):.1f} MB")
+            
+            # For Unix systems, we'll use curl for upload
+            platform = Platform(host_info.platform.lower())
+            
+            # Use curl with progress output and timeout (match KAPE approach - explicitly no Content-Type header)
+            upload_cmd = (
+                f"runscript -Raw=```curl -X PUT --data-binary '@{full_path}' "
+                f"-H 'Content-Type:' "
+                f"--max-time {int(estimated_upload_time)} "
+                f"--progress-bar "
+                f"'{proxied_url}' 2>&1```"
+            )
+                
+            # Add hosts file entries (match KAPE approach)
+            hosts_cmd = (
+                f"runscript -Raw=```"
+                f"echo '44.231.123.212 velociraptor.globalingest.cidc-ext.sonynei.net #sirt-velociraptor' >> /etc/hosts; "
+                f"echo '54.148.116.132 sirt-infra-ec2-s3proxy.sirt.sonynei.net #sirt-s3proxy' >> /etc/hosts"
+                f"```"
+            )
+            
+            self.session_manager.execute_command(
+                session, "runscript", hosts_cmd, is_admin=True
+            )
+            
+            self.logger.info("Starting upload to S3...")
+            print("[*] Starting upload to S3...")
+            
+            # Execute upload command with dynamic timeout
+            # Since execute_command has hardcoded 2-min timeout, we need to work around it
+            # by running the upload in background and monitoring it
+            background_upload_cmd = (
+                f"runscript -Raw=```("
+                f"curl -X PUT --data-binary '@{full_path}' "
+                f"-H 'Content-Type:' "
+                f"--max-time {int(estimated_upload_time)} "
+                f"--connect-timeout 30 "
+                f"--retry 3 "
+                f"--retry-delay 5 "
+                f"--progress-bar "
+                f"--fail "
+                f"'{proxied_url}' > {evidence_path}/upload.log 2>&1; "
+                f"echo $? > {evidence_path}/upload_exit_code"
+                f") & echo $! > {evidence_path}/upload.pid && echo 'Upload started in background'```"
+            )
+            
+            # Start upload in background
+            upload_start = self.session_manager.execute_command(
+                session, "runscript", background_upload_cmd, is_admin=True
+            )
+            
+            if not upload_start:
+                self.logger.error("Failed to start upload process")
+                return False
+                
+            # Monitor the upload progress
+            start_time = time.time()
+            check_interval = 10  # Check every 10 seconds
+            
+            while True:
+                elapsed = time.time() - start_time
+                
+                # Check upload progress from log file
+                progress_result = self.session_manager.execute_command(
+                    session, "runscript", 
+                    f"runscript -Raw=```test -f {evidence_path}/upload.log && tail -1 {evidence_path}/upload.log | grep -o '[0-9]\\+\\.[0-9]%' | tail -1```",
+                    is_admin=True
+                )
+                
+                if progress_result and progress_result.stdout.strip():
+                    progress_str = progress_result.stdout.strip()
+                    try:
+                        progress_pct = float(progress_str.rstrip('%'))
+                        # Show progress every 10 seconds or at milestones
+                        if int(elapsed) % 10 == 0 or progress_pct in [25.0, 50.0, 75.0, 100.0]:
+                            print(f"[*] Upload progress: {progress_pct:.1f}% ({elapsed/60:.1f} minutes elapsed)")
+                        
+                        # Check if upload is complete
+                        if progress_pct >= 100.0:
+                            self.logger.info(f"Upload reached 100% completion in {elapsed/60:.1f} minutes")
+                            print(f"[+] Upload reached 100% completion")
+                            # Wait a short time for curl to finish cleanly
+                            print("[*] Waiting 30 seconds for upload finalization...")
+                            time.sleep(30)
+                            self.logger.info(f"Successfully uploaded {actual_file} to S3 in {(elapsed+30)/60:.1f} minutes")
+                            print(f"[+] Successfully uploaded {actual_file} to S3 in {(elapsed+30)/60:.1f} minutes")
+                            break
+                    except ValueError:
+                        pass
+                
+                # Also check exit code as fallback
+                exit_code_result = self.session_manager.execute_command(
+                    session, "runscript", 
+                    f"runscript -Raw=```test -f {evidence_path}/upload_exit_code && cat {evidence_path}/upload_exit_code```",
+                    is_admin=True
+                )
+                
+                if exit_code_result and exit_code_result.stdout.strip().isdigit():
+                    exit_code = int(exit_code_result.stdout.strip())
+                    if exit_code == 0:
+                        self.logger.info(f"Successfully uploaded {actual_file} to S3 in {elapsed/60:.1f} minutes")
+                        print(f"[+] Successfully uploaded {actual_file} to S3 in {elapsed/60:.1f} minutes")
+                        break
+                    else:
+                        # Get error details from log
+                        log_result = self.session_manager.execute_command(
+                            session, "runscript", 
+                            f"runscript -Raw=```tail -20 {evidence_path}/upload.log```",
+                            is_admin=True
+                        )
+                        error_msg = log_result.stdout if log_result else "Unknown error"
+                        self.logger.error(f"Upload failed with exit code {exit_code}: {error_msg}")
+                        print(f"[!] Upload failed with exit code {exit_code}: {error_msg}")
+                        return False
+                
+                # Check if upload is still running
+                pid_result = self.session_manager.execute_command(
+                    session, "runscript", 
+                    f"runscript -Raw=```test -f {evidence_path}/upload.pid && cat {evidence_path}/upload.pid```",
+                    is_admin=True
+                )
+                
+                if pid_result and pid_result.stdout.strip().isdigit():
+                    pid = pid_result.stdout.strip()
+                    # Check if process is still alive
+                    proc_check = self.session_manager.execute_command(
+                        session, "runscript", 
+                        f"runscript -Raw=```ps -p {pid} | grep -v PID | wc -l```",
+                        is_admin=True
+                    )
+                    
+                    if proc_check and proc_check.stdout.strip() == "0":
+                        # Process died - check if exit code was written
+                        time.sleep(2)  # Give a moment for exit code to be written
+                        exit_code_result = self.session_manager.execute_command(
+                            session, "runscript", 
+                            f"runscript -Raw=```test -f {evidence_path}/upload_exit_code && cat {evidence_path}/upload_exit_code```",
+                            is_admin=True
+                        )
+                        
+                        if exit_code_result and exit_code_result.stdout.strip().isdigit():
+                            exit_code = int(exit_code_result.stdout.strip())
+                            if exit_code == 0:
+                                self.logger.info("Upload completed successfully (process finished)")
+                                print("[+] Upload completed successfully")
+                                break
+                            else:
+                                # Get error details from log
+                                log_result = self.session_manager.execute_command(
+                                    session, "runscript", 
+                                    f"runscript -Raw=```tail -20 {evidence_path}/upload.log```",
+                                    is_admin=True
+                                )
+                                error_msg = log_result.stdout if log_result else "Unknown error"
+                                self.logger.error(f"Upload failed with exit code {exit_code}: {error_msg}")
+                                print(f"[!] Upload failed with exit code {exit_code}")
+                                return False
+                        else:
+                            # Process died without writing exit code
+                            self.logger.error("Upload process terminated unexpectedly without exit code")
+                            # Get last lines from upload log for debugging
+                            log_result = self.session_manager.execute_command(
+                                session, "runscript", 
+                                f"runscript -Raw=```tail -10 {evidence_path}/upload.log```",
+                                is_admin=True
+                            )
+                            if log_result and log_result.stdout:
+                                self.logger.error(f"Last upload log lines: {log_result.stdout}")
+                                print(f"[!] Upload log: {log_result.stdout}")
+                            return False
+                
+                # Check for timeout
+                if elapsed > estimated_upload_time + 60:  # Give extra minute buffer
+                    self.logger.error(f"Upload exceeded estimated time of {estimated_upload_time/60:.1f} minutes")
+                    # Try to kill the curl process
+                    if pid_result and pid_result.stdout.strip().isdigit():
+                        self.session_manager.execute_command(
+                            session, "runscript", 
+                            f"runscript -Raw=```kill {pid_result.stdout.strip()}```",
+                            is_admin=True
+                        )
+                    return False
+                
+                # Log progress
+                if int(elapsed) % 30 == 0:  # Every 30 seconds
+                    self.logger.info(f"Upload in progress... {elapsed/60:.1f} minutes elapsed")
+                    print(f"[*] Upload in progress... {elapsed/60:.1f} minutes elapsed")
+                
+                time.sleep(check_interval)
+            
+            # NOTE: The static wait time below is now SKIPPED when we detect 100% upload completion
+            # We only fall through to this code if the upload monitoring loop exits via timeout or error
+            # In those cases, we still want to wait before cleanup to avoid deleting files prematurely
+            
+            # Check if we exited the loop normally (via break when 100% detected)
+            # If not, apply the safety wait time
+            if elapsed > estimated_upload_time + 60:
+                # We hit timeout, so apply safety wait
+                self.logger.warning("Upload monitoring timed out, applying safety wait before cleanup")
+                
+                # Calculate wait time based on file size with safety buffer
+                # Using same upload rate calculation as above (1MB/s) plus 50% safety margin
+                min_wait_time = 300  # 5 minutes minimum
+                safety_multiplier = 1.5  # 50% safety margin
+                calculated_wait = int((file_size / UPLOAD_RATE) * safety_multiplier)
+                
+                # Use the larger of minimum wait or calculated wait
+                actual_wait_time = max(min_wait_time, calculated_wait)
+                
+                # Cap at 30 minutes to avoid excessive waits
+                max_wait_time = 1800  # 30 minutes
+                actual_wait_time = min(actual_wait_time, max_wait_time)
+                
+                self.logger.info(f"File size: {file_size/1024/1024:.1f}MB, calculated wait: {calculated_wait}s, actual wait: {actual_wait_time}s")
+                print(f"[*] Waiting {actual_wait_time/60:.1f} minutes for S3 upload to complete before cleanup...")
+                print(f"    (Based on {file_size/1024/1024:.1f}MB file size with safety margin)")
+                
+                time.sleep(actual_wait_time)
+            
+            # Cleanup evidence files and upload artifacts
+            try:
+                # Clean up upload artifacts first
+                self.session_manager.execute_command(
+                    session, "runscript", 
+                    f"runscript -Raw=```rm -f {evidence_path}/upload.log {evidence_path}/upload.pid {evidence_path}/upload_exit_code```", 
+                    is_admin=True
+                )
+                # Clean up the entire UAC collection directory
+                self.session_manager.execute_command(
+                    session, "runscript", f"runscript -Raw=```rm -rf {evidence_path.rsplit('/', 1)[0]}```", is_admin=True
+                )
+                self.logger.info("Cleanup completed")
+                print("[+] Cleanup completed")
+            except Exception as e:
+                self.logger.warning(f"Cleanup operations failed: {e}")
+                
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error uploading UAC results: {e}", exc_info=True)
+            return False
+        finally:
+            # Ensure RTR session is closed
+            if session:
+                try:
+                    self.session_manager.end_session(session)
+                except Exception as e:
+                    self.logger.warning(f"Failed to close RTR session: {e}")

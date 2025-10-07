@@ -1,0 +1,55 @@
+# Falcon Client Configuration File Example
+# Copy this file to config.yaml and customize for your environment
+
+# S3 Configuration
+s3:
+  # S3 bucket for artifact uploads
+  bucket_name: "your-s3-bucket-name"
+  
+  # Optional: Custom S3 endpoint (for MinIO, DigitalOcean Spaces, etc.)
+  # endpoint_url: "https://s3.us-west-2.amazonaws.com"
+  
+  # Optional: AWS region (defaults to us-east-1)
+  # region: "us-west-2"
+
+# Proxy Configuration
+proxy:
+  # Proxy hostname for S3 uploads
+  host: "your-proxy.example.com"
+  
+  # Proxy IP address (fallback if hostname fails)
+  ip: "10.0.0.1"
+  
+  # Enable/disable proxy usage
+  enabled: true
+
+# Dynamic Host Entries
+# These will be added to /etc/hosts on target endpoints
+# Add as many entries as needed - all will be applied
+host_entries:
+  - ip: "10.0.0.1"
+    hostname: "proxy.example.com"
+    comment: "s3-proxy"  # Optional comment
+  
+  - ip: "10.0.0.2"
+    hostname: "velociraptor.example.com"
+    comment: "velociraptor-server"
+  
+  # Add more entries as needed
+  # - ip: "192.168.1.100"
+  #   hostname: "internal-service.local"
+  #   comment: "internal-api"
+
+# Alternative Endpoints (optional)
+alternative_endpoints:
+  velociraptor:
+    host: "velociraptor.example.com"
+    ip: "10.0.0.2"
+    enabled: false
+
+# Timeout Configuration (seconds)
+timeouts:
+  file_download: 18000  # 5 hours
+  file_upload: 1500     # 25 minutes
+  sha_retrieval: 2000   # ~33 minutes
+  command_execution: 600 # 10 minutes

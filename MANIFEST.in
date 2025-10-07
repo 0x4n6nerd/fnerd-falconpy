@@ -1,0 +1,21 @@
+# Include documentation
+include README.md
+include LICENSE
+include requirements.txt
+
+# Include all package data
+recursive-include falcon_client *.py
+recursive-include falcon_client *.md
+
+# Include resources
+recursive-include falcon_client/resources *
+include falcon_client/resources/deploy_kape.ps1
+
+# Include KAPE files
+recursive-include falcon_client/resources/kape *
+
+# Exclude compiled files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__
+global-exclude .DS_Store

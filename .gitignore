@@ -1,0 +1,267 @@
+# Configuration files (may contain sensitive information)
+config.yaml
+config.yml
+config.json
+!config.yaml.example
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# AI Assistant files
+.claude/
+.aider/
+.cursor/
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# AWS credentials (should never be committed)
+.aws/
+
+# Application specific
+collection_*.zip
+*.tar.gz
+
+# Third-party forensic tools (obtained separately - see DEPENDENCIES.md)
+# KAPE - https://github.com/EricZimmerman/KapeFiles
+fnerd_falconpy/resources/kape.zip
+fnerd_falconpy/resources/kape/
+!fnerd_falconpy/resources/kape/Targets/Custom/
+
+# UAC - https://github.com/tclahr/uac
+fnerd_falconpy/resources/uac.zip
+fnerd_falconpy/resources/uac/
+!fnerd_falconpy/resources/uac/profiles/
+!fnerd_falconpy/resources/uac/README.md
+
+# Keep deployment scripts (these are custom)
+!fnerd_falconpy/resources/deploy_kape.ps1
+!fnerd_falconpy/resources/deploy_uac.sh
+
+# Test files and execution remnants
+test_*.py
+validate_*.py
+debug_*.py
+*_test.py
+*_debug.py
+example_*.py
+cleanup_workspace.py
+falcon_client.py
+
+# Runtime data and cache
+.4n6nerdstriker/
+runtime_data/
+cache/
+
+# Development and session documentation
+CLAUDE*.md
+SESSION_*.md
+HANDOVER.md
+*_METRICS_*.md
+*_FIX_SUMMARY*.md
+CONCURRENCY_*.md
+concurrency_*.md
+Concurrent_*.md
+Learn_*.md
+Update_*.md
+VERSION_*_TRACKING.md
+PERFORMANCE_*.md
+single-tenant.md
+archive/
+CHANGELOG.md
+RELEASE_NOTES_v*.md
+ROADMAP.md
+
+# Development scripts and notebooks
+*.ipynb
+.ipynb_checkpoints/
+scratch*.py
+sandbox*.py
+experiment*.py
+
+# Discovery output (contains sensitive host data)
+discovery_output/
+mac_devices_*.csv
+windows_devices_*.csv
+linux_devices_*.csv
+*.csv
+mac-devices/
+online_test/
+mixed_test/
+multi_cid_test/
+single_cid_test/
+
+# Local test data
+test_data/
+test_results/
+test_output/
+
+# Deployment and setup scripts (keep these for dev reference but not in public repo)
+setup_git_lfs.sh
+initial_github_setup.sh
+verify_git_exclusions.sh
+FILES_TO_KEEP.md
+
+# Editor and tool-specific files
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# macOS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+
+# Windows specific
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Python virtual environments (comprehensive)
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+virtualenv/
+.virtualenv/
+pyenv/
+.pyenv/
+pipenv/
+.pipenv/
+
+# Package build artifacts
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.manifest
+*.spec
+.installed.cfg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Coverage and testing
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
