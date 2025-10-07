@@ -1,6 +1,6 @@
 # Core Module
 
-The core module contains the fundamental data models, interfaces, and configuration classes used throughout the Falcon Client package.
+The core module contains the fundamental data models, interfaces, and configuration classes used throughout the fnerd-falconpy package.
 
 ## Components
 

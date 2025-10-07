@@ -1,5 +1,5 @@
 """
-Device discovery module for Falcon Client.
+Device discovery module for fnerd-falconpy.
 """
 
 from .device_discovery import DeviceDiscovery

@@ -1,4 +1,4 @@
-# Falcon Client Installation Guide
+# fnerd-falconpy Installation Guide
 
 ## Prerequisites
 

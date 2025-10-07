@@ -1,6 +1,6 @@
 # CLI Module
 
-The CLI module provides the command-line interface for Falcon Client operations.
+The CLI module provides the command-line interface for fnerd-falconpy operations.
 
 ## Components
 

@@ -1,5 +1,5 @@
 """
-Command-line interface for Falcon Client.
+Command-line interface for fnerd-falconpy.
 """
 
 from fnerd_falconpy.cli.main import main

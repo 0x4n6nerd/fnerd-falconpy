@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Example usage of UAC (Unix-like Artifacts Collector) with Falcon Client.
+Example usage of UAC (Unix-like Artifacts Collector) with fnerd-falconpy.
 
 This example demonstrates how to use the UAC collector for forensic collection
 on Unix/Linux/macOS systems.
@@ -188,7 +188,7 @@ def list_available_uac_profiles():
 
 
 if __name__ == "__main__":
-    print("Falcon Client - UAC Collection Examples\n")
+    print("fnerd-falconpy - UAC Collection Examples\n")
     print("This demonstrates UAC (Unix-like Artifacts Collector) usage.\n")
     
     # Run examples

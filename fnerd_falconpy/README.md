@@ -1,4 +1,4 @@
-# Falcon Client Package Structure
+# fnerd-falconpy Package Structure
 
 This document explains the overall architecture and how the components work together.
 

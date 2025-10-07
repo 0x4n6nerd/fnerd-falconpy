@@ -144,4 +144,4 @@ def log_session_info(command_args: list, environment_info: dict = None):
 def cleanup_on_exit():
     """Cleanup function to call on program exit."""
     logger = logging.getLogger("fnerd_falconpy.audit")
-    logger.info("=== Falcon Client Session Ended ===")
+    logger.info("=== fnerd-falconpy Session Ended ===")

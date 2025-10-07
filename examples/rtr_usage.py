@@ -213,7 +213,7 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    print("Falcon Client RTR Usage Examples")
+    print("fnerd-falconpy RTR Usage Examples")
     print("=" * 70)
     
     example_command_line_usage()

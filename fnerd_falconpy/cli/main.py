@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Command-line interface for Falcon Client.
+Command-line interface for fnerd-falconpy.
 """
 
 import os
@@ -22,7 +22,7 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="""
-Falcon Client v1.3.0 - Production-Ready Cross-Platform Forensic Collection
+fnerd-falconpy v1.3.0 - Production-Ready Cross-Platform Forensic Collection
 
 A comprehensive forensic collection tool integrating with CrowdStrike's Falcon platform.
 Supports automated evidence collection for Windows (KAPE), Unix/Linux/macOS (UAC), 
@@ -1030,7 +1030,7 @@ def setup_logging(log_level: str, log_file: str = None):
     
     # Log the session start for auditing
     logger = logging.getLogger("fnerd_falconpy.audit")
-    logger.info(f"=== Falcon Client Session Started ===")
+    logger.info(f"=== fnerd-falconpy Session Started ===")
     logger.info(f"Audit log: {default_audit_log}")
     if log_file:
         logger.info(f"User log: {log_file}")

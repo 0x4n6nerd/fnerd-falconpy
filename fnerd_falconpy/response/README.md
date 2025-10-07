@@ -1,6 +1,6 @@
 # Response Actions Module
 
-This module provides incident response capabilities for the Falcon Client package, including host isolation (network containment) and response policy management.
+This module provides incident response capabilities for the fnerd-falconpy package, including host isolation (network containment) and response policy management.
 
 ## Overview
 
