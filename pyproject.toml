@@ -50,10 +50,10 @@ dev = [
 fnerd-falconpy = "fnerd_falconpy.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/fnerd/fnerd-falconpy"
-Documentation = "https://github.com/fnerd/fnerd-falconpy/blob/main/README.md"
-Repository = "https://github.com/fnerd/fnerd-falconpy"
-Issues = "https://github.com/fnerd/fnerd-falconpy/issues"
+Homepage = "https://github.com/0x4n6nerd/fnerd-falconpy"
+Documentation = "https://github.com/0x4n6nerd/fnerd-falconpy/blob/main/README.md"
+Repository = "https://github.com/0x4n6nerd/fnerd-falconpy"
+Issues = "https://github.com/0x4n6nerd/fnerd-falconpy/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

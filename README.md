@@ -1,5 +1,12 @@
 # fnerd-falconpy 🚀
 
+[![PyPI version](https://badge.fury.io/py/fnerd-falconpy.svg)](https://badge.fury.io/py/fnerd-falconpy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![GitHub stars](https://img.shields.io/github/stars/0x4n6nerd/fnerd-falconpy?style=social)](https://github.com/0x4n6nerd/fnerd-falconpy/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/0x4n6nerd/fnerd-falconpy)](https://github.com/0x4n6nerd/fnerd-falconpy/issues)
+[![Release](https://img.shields.io/github/v/release/0x4n6nerd/fnerd-falconpy)](https://github.com/0x4n6nerd/fnerd-falconpy/releases)
+
 **Production-ready cross-platform forensic collection toolkit for CrowdStrike Falcon RTR**
 
 fnerd-falconpy is a comprehensive Python package that leverages CrowdStrike Falcon's Real Time Response (RTR) capabilities to perform enterprise-scale forensic collections across Windows, macOS, and Linux endpoints.
