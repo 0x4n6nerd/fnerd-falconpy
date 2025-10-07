@@ -5,7 +5,7 @@ This document explains the overall architecture and how the components work toge
 ## Package Organization
 
 ```
-falcon_client/
+fnerd_falconpy/
 ├── __init__.py           # Package exports
 ├── orchestrator.py       # Main orchestrator
 ├── orchestrator_optimized.py  # Optimized orchestrator with batch support
@@ -260,5 +260,5 @@ logging.basicConfig(level=logging.DEBUG)
 
 Or via CLI:
 ```bash
-falcon-client --log-level DEBUG ...
+fnerd-falconpy --log-level DEBUG ...
 ```
