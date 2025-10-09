@@ -442,22 +442,22 @@ Based on real-world timing analysis (macOS ARM64, ir_triage = 79 minutes), we've
 - **Includes**: Persistence, hidden files, startup, quarantine
 - **Use case**: Targeted malware investigations
 
-## Integration with 4n6NerdStriker
+## Integration with fnerd-falconpy
 
 These optimized profiles are built into 4n6NerdStriker v1.1.0+ with appropriate timeouts:
 
 ```bash
 # Quick assessment (20 min timeout)
-4n6nerdstriker uac -n 1 -d HOSTNAME -p quick_triage_optimized
+fnerd-falconpy uac -n 1 -d HOSTNAME -p quick_triage_optimized
 
 # IR without hashing (45 min timeout)
-4n6nerdstriker uac -n 1 -d HOSTNAME -p ir_triage_no_hash
+fnerd-falconpy uac -n 1 -d HOSTNAME -p ir_triage_no_hash
 
 # Network investigation (30 min timeout)
-4n6nerdstriker uac -n 1 -d HOSTNAME -p network_compromise
+fnerd-falconpy uac -n 1 -d HOSTNAME -p network_compromise
 
 # Fast malware hunt (50 min timeout)
-4n6nerdstriker uac -n 1 -d HOSTNAME -p malware_hunt_fast
+fnerd-falconpy uac -n 1 -d HOSTNAME -p malware_hunt_fast
 ```
 
 Custom profiles can also be referenced:
